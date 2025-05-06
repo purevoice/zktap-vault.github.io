@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZK-Tap Vault</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #0a0a1a;
+            color: #e0e0ff;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh; 
+            overflow-x: hidden; 
+            user-select: none;
+        }
+        
+        h1 {
+            color: #6060ff;
+            margin-bottom: 10px;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: 70vh; 
+            min-height: 400px; 
+            background-color: #121230;
+            border: 2px solid #303060;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(64, 64, 255, 0.2);
+        }
+
+        #rollup-zones-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 100px); 
+            display: flex;
+            z-index: 0; 
+        }
+
+        .rollup-zone {
+            flex-grow: 1;
+            height: 100%;
+            opacity: 0.15; 
+            border-right: 1px dashed rgba(224, 224, 255, 0.2); 
+        }
+        .rollup-zone:last-child {
+            border-right: none;
+        }
+
+        #zone-blue { background-color: #6080ff; }
+        #zone-red { background-color: #ff6060; }
+        #zone-green { background-color: #60ff80; }
+        
+        .cross-rollup-bridge {
+            position: absolute;
+            background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,0,0.7), rgba(255,255,255,0.1));
+            height: 8px;
+            border-radius: 4px;
+            z-index: 1; 
+            transform-origin: left center;
+            opacity: 0;
+            transition: opacity 0.3s ease-out, width 0.3s ease-out;
+            box-shadow: 0 0 15px #ffff00, 0 0 25px #ffffaa;
+        }
+
+        #vault {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 100px;
+            background-color: #181840;
+            border-top: 2px solid #404080;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2; 
+        }
+        
+        #vault-door {
+            width: 150px;
+            height: 180px;
+            background: linear-gradient(145deg, #202050, #181840);
+            border: 5px solid #404080;
+            border-radius: 10px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 15px rgba(64, 64, 255, 0.3);
+        }
+        
+        #vault-door::before {
+            content: "";
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background-color: #404080;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(64, 64, 255, 0.5);
+        }
+        
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.1s ease-out, background 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            box-shadow: 0 0 15px currentColor;
+            z-index: 5; 
+            font-size: 18px; 
+        }
+        
+        .orb.locked {
+            background-color: transparent !important; 
+            color: #00ff00;
+            box-shadow: 0 0 20px #00ff00;
+        }
+        
+        .orb.locked::after {
+            content: "🔒";
+            font-size: 1.3em; 
+        }
+        
+        .orb.batch { 
+            animation: pulse 1.5s infinite;
+        }
+        .orb.cross-rollup {
+            border: 2px dashed #ffffff;
+        }
+
+        .orb.booster-orb { 
+            background: radial-gradient(circle, #c060ff, #8030c0) !important; 
+            color: #ffee00 !important; 
+            border: 2px solid #ffeeaa; 
+            box-shadow: 0 0 20px #c060ff, 0 0 30px #ffccff !important; 
+            animation: pulse-booster-orb 1s infinite;
+        }
+        @keyframes pulse-booster-orb {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        .orb.booster-orb-lingering { 
+            transition: transform 0.3s ease-out; 
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        #batch-info-popup { 
+            position: absolute;
+            top: 40%; 
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20, 20, 60, 0.9);
+            color: #ffcc00;
+            padding: 15px 25px;
+            border-radius: 8px;
+            z-index: 150; 
+            display: none;
+            font-size: 1.2em;
+            border: 1px solid #ffcc00;
+            box-shadow: 0 0 15px rgba(255,204,0,0.5);
+            text-align: center;
+        }
+
+        #ui-container {
+            width: 100%;
+            max-width: 600px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px; 
+        }
+        
+        #progress-container {
+            width: 100%;
+            background-color: #181840;
+            border-radius: 5px;
+            padding: 5px;
+        }
+        
+        #progress-bar {
+            height: 20px;
+            background: linear-gradient(90deg, #3030a0, #6060ff);
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        #stats {
+            display: flex;
+            justify-content: space-between;
+            gap: 5px; 
+        }
+        
+        .stat-box {
+            background-color: #181840;
+            padding: 10px;
+            border-radius: 5px;
+            flex-grow: 1; 
+            text-align: center;
+        }
+        
+        #upgrade-menu {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #181840;
+            border: 2px solid #404080;
+            border-radius: 10px;
+            padding: 20px;
+            z-index: 1000;
+            width: 85%;
+            max-width: 450px; 
+            max-height: 80vh; 
+            overflow-y: auto; 
+        }
+        
+        .upgrade-btn {
+            background: linear-gradient(145deg, #3030a0, #202050);
+            border: none;
+            color: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s;
+            font-size: 0.9em;
+        }
+        
+        .upgrade-btn:hover {
+            transform: scale(1.02);
+        }
+        
+        .upgrade-btn:disabled {
+            background: #505070;
+            cursor: not-allowed;
+        }
+        
+        #menu-buttons {
+            display: flex;
+            justify-content: space-around; 
+            margin-top: 10px;
+            gap: 10px;
+        }
+        
+        #start-screen, #end-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(10, 10, 30, 0.95); 
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        
+        #end-screen {
+            display: none;
+        }
+        
+        .screen-content {
+            text-align: center;
+            padding: 20px;
+            max-width: 90%;
+            background-color: rgba(24, 24, 64, 0.8); 
+            border-radius: 10px;
+            border: 1px solid #404080;
+        }
+        
+        .big-button {
+            background: linear-gradient(145deg, #6060ff, #3030a0);
+            border: none;
+            color: white;
+            padding: 12px 25px; 
+            margin-top: 20px;
+            border-radius: 10px;
+            font-size: 1em; 
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .big-button:hover {
+            transform: scale(1.05);
+        }
+                
+        #timer {
+            font-size: 1.5em; 
+            font-weight: bold;
+            color: #ff6060;
+        }
+        
+        #edge-points {
+            color: #ffcc00;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>ZK-Tap Vault</h1>
+    
+    <div id="game-container">
+        <div id="rollup-zones-container">
+            <div id="zone-blue" class="rollup-zone"></div>
+            <div id="zone-red" class="rollup-zone"></div>
+            <div id="zone-green" class="rollup-zone"></div>
+        </div>
+        <div class="cross-rollup-bridge" id="cross-rollup-bridge-visual"></div>
+        <div id="batch-info-popup">Batched!</div>
+
+
+        <div id="vault">
+            <div id="vault-door"></div>
+        </div>
+        
+        <div id="start-screen">
+            <div class="screen-content">
+                <h1>ZK-Tap Vault</h1>
+                <p>As a Vault Keeper, tap glowing Transaction Orbs to secure them in the vault using ZK-Proofs!</p>
+                <p>Orbs appear in different <strong>Rollup Zones</strong>. Secure special <strong>Cross-Rollup Orbs</strong> (double-tap!) to clear their linked zones!</p> 
+                <p>Look out for <strong>Batch Proof Booster Orbs</strong> (glowing purple orb with a yellow star ⭐) to secure all on-screen orbs at once!</p>
+                <p>Upgrades bought from the menu apply to the next round you play and last for that round only!</p> 
+                <p>Fill the progress bar before time runs out.</p>
+                <button id="start-button" class="big-button">Start Game</button>
+            </div>
+        </div>
+        
+        <div id="end-screen">
+            <div class="screen-content">
+                <h1 id="end-title">Round Complete!</h1>
+                <p id="end-message">You secured <span id="final-score">0</span> transactions!</p>
+                <p>Earned <span id="earned-points">0</span> Edge Points!</p>
+                <div id="menu-buttons">
+                    <button id="restart-button" class="big-button">Play Again</button>
+                    <button id="upgrade-button" class="big-button">Upgrades</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="ui-container">
+        <div id="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        
+        <div id="stats">
+            <div class="stat-box">
+                <div>Time Left</div>
+                <div id="timer">30</div>
+            </div>
+            <div class="stat-box">
+                <div>Secured</div>
+                <div id="secured-count">0</div>
+            </div>
+            <div class="stat-box">
+                <div>Edge Points</div>
+                <div id="edge-points">0</div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="upgrade-menu">
+        <h2>Upgrades (For Next Round)</h2>
+        <p>Current Edge Points: <span id="upgrade-points">0</span></p>
+        <button id="upgrade-tap-speed" class="upgrade-btn"> 
+            Faster Taps (Cost: 50) - Next Round L0
+        </button>
+        <button id="upgrade-auto-tap" class="upgrade-btn">
+            Auto-Tap (Cost: 100) - Next Round L0
+        </button>
+        <button id="upgrade-time" class="upgrade-btn">
+            +5 Seconds (Cost: 75) - Next Round L0
+        </button>
+        <button id="upgrade-booster-cooldown" class="upgrade-btn">
+            Booster Cooldown (Cost: 120) - Next Round L0
+        </button>
+        <button id="close-upgrade" class="upgrade-btn" style="margin-top: 15px; background: linear-gradient(145deg, #505070, #303050);">Close</button>
+    </div>
+    
+    <script>
+        const globalGameState = {
+            edgePoints: 0, 
+            purchasedUpgrades: { // These are the levels BOUGHT for the NEXT round
+                tapSpeed: 0,      
+                autoTap: 0,       
+                timeExtension: 0, 
+                boosterCooldown: 0,
+            }
+        };
+
+        let currentRoundState = {}; 
+
+        function initializeCurrentRoundState() {
+            currentRoundState = {
+                score: 0,
+                timeLeft: 30, 
+                gameActive: false,
+                progress: 0,
+                targetProgress: 100,
+                orbCount: 0,
+                orbSpeed: 1,
+                // MODIFIED: Active upgrades for THIS round are a *copy* of what was purchased
+                activeUpgrades: { ...globalGameState.purchasedUpgrades }, 
+                autoTapInterval: null,
+                booster: {
+                    active: false,      
+                    cooldown: 20000,    
+                    lastSpawnTime: 0,
+                },
+            };
+        }
+        const rollupZones = [ 
+            { id: 'zone-blue', name: 'BlueRoll', color: '#6080ff' },
+            { id: 'zone-red', name: 'RedRoll', color: '#ff6060' },
+            { id: 'zone-green', name: 'GreenRoll', color: '#60ff80' }
+        ];
+        
+        const elements = {
+            gameContainer: document.getElementById('game-container'),
+            vaultDoor: document.getElementById('vault-door'),
+            progressBar: document.getElementById('progress-bar'),
+            securedCount: document.getElementById('secured-count'),
+            edgePointsDisplay: document.getElementById('edge-points'), 
+            timer: document.getElementById('timer'),
+            startScreen: document.getElementById('start-screen'),
+            endScreen: document.getElementById('end-screen'),
+            startButton: document.getElementById('start-button'),
+            restartButton: document.getElementById('restart-button'),
+            upgradeButton: document.getElementById('upgrade-button'),
+            upgradeMenu: document.getElementById('upgrade-menu'),
+            closeUpgrade: document.getElementById('close-upgrade'),
+            finalScore: document.getElementById('final-score'),
+            earnedPoints: document.getElementById('earned-points'),
+            upgradePointsDisplay: document.getElementById('upgrade-points'), 
+            upgradeTapSpeed: document.getElementById('upgrade-tap-speed'),
+            upgradeAutoTap: document.getElementById('upgrade-auto-tap'),
+            upgradeTime: document.getElementById('upgrade-time'),
+            upgradeBoosterCooldown: document.getElementById('upgrade-booster-cooldown'),
+            crossRollupBridgeVisual: document.getElementById('cross-rollup-bridge-visual'),
+            batchInfoPopup: document.getElementById('batch-info-popup')
+        };
+        
+        const orbColors = ['#ff6060', '#60ff60', '#6060ff', '#ffff60', '#ff60ff', '#60ffff'];
+        const BOOSTER_LINGER_DURATION = 1500; 
+        const MAX_ORBS_ON_SCREEN = 12; 
+        const MIN_ORB_SEPARATION = 5; 
+
+        elements.startButton.addEventListener('click', startGame);
+        elements.restartButton.addEventListener('click', startGame);
+        elements.upgradeButton.addEventListener('click', showUpgradeMenu);
+        elements.closeUpgrade.addEventListener('click', hideUpgradeMenu);
+        elements.upgradeTapSpeed.addEventListener('click', () => buyUpgrade('tapSpeed', 50, 5)); 
+        elements.upgradeAutoTap.addEventListener('click', () => buyUpgrade('autoTap', 100, 3));
+        elements.upgradeTime.addEventListener('click', () => buyUpgrade('timeExtension', 75, 2));
+        elements.upgradeBoosterCooldown.addEventListener('click', () => buyUpgrade('boosterCooldown', 120, 5));
+        
+        function startGame() {
+            initializeCurrentRoundState(); // This now correctly uses globalGameState.purchasedUpgrades for activeUpgrades
+
+            // Apply active upgrades for the current round
+            currentRoundState.timeLeft = 30 + (currentRoundState.activeUpgrades.timeExtension * 5); 
+            currentRoundState.gameActive = true;
+            
+            const initialBoosterCooldown = currentRoundState.booster.cooldown / (1 + currentRoundState.activeUpgrades.boosterCooldown * 0.2);
+            currentRoundState.booster.lastSpawnTime = Date.now() - initialBoosterCooldown + 5000; 
+            
+            updateScoreUI(); 
+            updateTimer(); 
+            updateProgress();
+            elements.startScreen.style.display = 'none';
+            elements.endScreen.style.display = 'none';
+            elements.upgradeMenu.style.display = 'none';
+            
+            document.querySelectorAll('.orb').forEach(el => el.remove()); 
+            
+            clearInterval(currentRoundState.gameLoop); 
+            clearInterval(currentRoundState.orbSpawnLoop);
+            clearInterval(currentRoundState.autoTapInterval);
+            
+            currentRoundState.gameLoop = setInterval(updateGame, 1000);
+            currentRoundState.orbSpawnLoop = setInterval(() => {
+                const numOrbsToSpawn = Math.floor(Math.random() * 3) + 1; 
+                for (let i = 0; i < numOrbsToSpawn; i++) {
+                    if (document.querySelectorAll('.orb').length < MAX_ORBS_ON_SCREEN) {
+                        trySpawnOrbWithNoOverlap(); 
+                    } else {
+                        break; 
+                    }
+                }
+            }, 1100); 
+
+            if (currentRoundState.activeUpgrades.autoTap > 0) startAutoTap();
+
+            // MODIFIED: After a round starts with its active upgrades,
+            // reset the purchasedUpgrades so the next round starts fresh unless new ones are bought.
+            globalGameState.purchasedUpgrades = {
+                tapSpeed: 0, autoTap: 0, timeExtension: 0, boosterCooldown: 0
+            };
+        }
+        
+        function updateGame() {
+            if (!currentRoundState.gameActive) return;
+            
+            currentRoundState.timeLeft--;
+            updateTimer();
+            
+            currentRoundState.orbSpeed = Math.min(3, 1 + (currentRoundState.score / 30)); 
+            
+            if (currentRoundState.timeLeft <= 0) endGame(false);
+            else if (currentRoundState.progress >= currentRoundState.targetProgress) endGame(true);
+        }
+        
+        function updateTimer() {
+            elements.timer.textContent = currentRoundState.timeLeft;
+            elements.timer.style.color = currentRoundState.timeLeft <= 5 ? '#ff0000' : '#ff6060';
+            elements.timer.style.animation = currentRoundState.timeLeft <= 5 ? 'pulse 0.5s infinite' : 'none';
+        }
+        
+        function updateScoreUI() { 
+            elements.securedCount.textContent = currentRoundState.score;
+            elements.edgePointsDisplay.textContent = globalGameState.edgePoints; 
+        }
+        
+        function updateProgress() {
+            const percentage = Math.min(100, (currentRoundState.progress / currentRoundState.targetProgress) * 100);
+            elements.progressBar.style.width = `${percentage}%`;
+            if (percentage < 30) elements.progressBar.style.background = 'linear-gradient(90deg, #a03030, #ff6060)';
+            else if (percentage < 70) elements.progressBar.style.background = 'linear-gradient(90deg, #a0a030, #ffff60)';
+            else elements.progressBar.style.background = 'linear-gradient(90deg, #30a030, #60ff60)';
+        }
+
+        function trySpawnOrbWithNoOverlap() {
+            const MAX_ATTEMPTS = 10;
+            for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+                const orbData = generateOrbData(); 
+                if (canPlaceOrb(orbData.x, orbData.y, orbData.size)) {
+                    createAndPlaceOrb(orbData);
+                    return; 
+                }
+            }
+        }
+
+        function generateOrbData() {
+            const size = 35 + Math.random() * 25;
+            const gameRect = elements.gameContainer.getBoundingClientRect();
+            const zoneWidth = gameRect.width / rollupZones.length;
+            const gamePlayHeight = gameRect.height - 100; 
+            let x, y, orbZoneIndex = -1, isCrossRollup = false, crossRollupZones = [];
+
+            const tempOrbTypeRand = Math.random(); 
+            if (tempOrbTypeRand < 0.05 && rollupZones.length > 1 && !(currentRoundState.booster.active && Math.random() < 0.5) ) { 
+                isCrossRollup = true;
+                const firstZoneIdx = Math.floor(Math.random() * (rollupZones.length - 1));
+                crossRollupZones = [firstZoneIdx, firstZoneIdx + 1];
+                const boundaryX = zoneWidth * (firstZoneIdx + 1);
+                x = Math.max(size / 2, boundaryX - size / 2 + (Math.random() * size - size / 2) * 0.5);
+            } else {
+                orbZoneIndex = Math.floor(Math.random() * rollupZones.length);
+                const minX = zoneWidth * orbZoneIndex + size / 2;
+                const maxX = zoneWidth * (orbZoneIndex + 1) - size * 1.5;
+                x = Math.max(size / 2, minX + Math.random() * (maxX - minX));
+            }
+            y = size + Math.random() * (gamePlayHeight - size * 2);
+
+            return { x, y, size, orbZoneIndex, isCrossRollup, crossRollupZones };
+        }
+        
+        function canPlaceOrb(newX, newY, newSize) {
+            const existingOrbs = document.querySelectorAll('.orb');
+            for (const existingOrb of existingOrbs) {
+                const existingRect = existingOrb.getBoundingClientRect();
+                const gameContainerRect = elements.gameContainer.getBoundingClientRect();
+
+                const existingX = existingRect.left - gameContainerRect.left + existingRect.width / 2;
+                const existingY = existingRect.top - gameContainerRect.top + existingRect.height / 2;
+                const existingSize = existingRect.width; 
+
+                const distanceX = newX - existingX;
+                const distanceY = newY - existingY;
+                const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+                
+                if (distance < (newSize / 2 + existingSize / 2 + MIN_ORB_SEPARATION)) {
+                    return false; 
+                }
+            }
+            return true; 
+        }
+
+        function createAndPlaceOrb(orbData) {
+            if (!currentRoundState.gameActive || document.querySelectorAll('.orb').length >= MAX_ORBS_ON_SCREEN) return; 
+            
+            currentRoundState.orbCount++;
+            const orb = document.createElement('div');
+            orb.className = 'orb';
+            
+            orb.style.width = `${orbData.size}px`;
+            orb.style.height = `${orbData.size}px`;
+            orb.style.left = `${orbData.x - orbData.size/2}px`; 
+            orb.style.top = `${orbData.y - orbData.size/2}px`;  
+            orb.style.fontSize = `${Math.max(12, orbData.size * 0.4)}px`;
+
+            let value = 1;
+            let tapsRequired = 1;
+            let isBatchType = false; 
+            let isBoosterOrb = false; 
+            
+            const boosterCooldownTime = currentRoundState.booster.cooldown / (1 + currentRoundState.activeUpgrades.boosterCooldown * 0.2); 
+            if (!currentRoundState.booster.active && (Date.now() - currentRoundState.booster.lastSpawnTime > boosterCooldownTime)) {
+                if (Math.random() < 0.15) { 
+                    isBoosterOrb = true;
+                    currentRoundState.booster.active = true; 
+                    currentRoundState.booster.lastSpawnTime = Date.now(); 
+                    
+                    orb.classList.add('booster-orb');
+                    orb.textContent = '⭐'; 
+                    value = 0; 
+                    tapsRequired = 1; 
+                }
+            }
+
+            if (!isBoosterOrb) { 
+                if (orbData.isCrossRollup) {
+                    value = 3; 
+                    tapsRequired = 2; 
+                    orb.classList.add('cross-rollup');
+                    orb.dataset.zone1 = rollupZones[orbData.crossRollupZones[0]].name;
+                    orb.dataset.zone2 = rollupZones[orbData.crossRollupZones[1]].name;
+                    const color1 = rollupZones[orbData.crossRollupZones[0]].color;
+                    const color2 = rollupZones[orbData.crossRollupZones[1]].color;
+                    orb.style.background = `linear-gradient(90deg, ${darkenColor(color1,10)} 0%, ${darkenColor(color1,30)} 48%, #fff 50%, ${darkenColor(color2,10)} 52%, ${darkenColor(color2,30)} 100%)`;
+                    orb.textContent = 'C'; 
+                } else if (Math.random() < 0.10) { 
+                    isBatchType = true;
+                    value = 5;
+                    orb.style.background = 'radial-gradient(circle, #ffcc00, #ff9900)';
+                    orb.textContent = '5x';
+                    orb.classList.add('batch');
+                } else { 
+                    const color = orbColors[Math.floor(Math.random() * orbColors.length)];
+                    orb.style.background = `radial-gradient(circle, ${color}, ${darkenColor(color, 30)})`;
+                    if (Math.random() < 0.2 && !orbData.isCrossRollup) { 
+                        tapsRequired = 2;
+                        orb.textContent = '2x';
+                    }
+                }
+            }
+             if (!orbData.isCrossRollup && orbData.orbZoneIndex !== -1) {
+                orb.dataset.zone = rollupZones[orbData.orbZoneIndex].name;
+            }
+
+            orb.dataset.value = value;
+            orb.dataset.tapsRequired = tapsRequired;
+            orb.dataset.tapsDone = 0;
+            orb.dataset.isBatch = isBatchType; 
+            orb.dataset.isCrossRollup = orbData.isCrossRollup;
+            orb.dataset.isBooster = isBoosterOrb; 
+            
+            orb.addEventListener('click', handleOrbClick);
+            elements.gameContainer.appendChild(orb);
+            
+            const despawnTime = isBoosterOrb ? 7000 : (3000 / currentRoundState.orbSpeed); 
+            const despawnTimeoutId = setTimeout(() => {
+                if (orb.parentNode && !orb.classList.contains('locked')) {
+                    orb.remove();
+                    if(isBoosterOrb) currentRoundState.booster.active = false; 
+                }
+            }, despawnTime);
+            orb.dataset.despawnTimeoutId = despawnTimeoutId;
+        }
+
+        function showCrossRollupBridge(zoneName1, zoneName2) {
+            // ... (remains the same)
+            const zone1 = rollupZones.find(z => z.name === zoneName1);
+            const zone2 = rollupZones.find(z => z.name === zoneName2);
+            if (!zone1 || !zone2) return;
+
+            const gameRect = elements.gameContainer.getBoundingClientRect();
+            const zoneWidth = gameRect.width / rollupZones.length;
+            const zoneIndex1 = rollupZones.indexOf(zone1);
+            const zoneIndex2 = rollupZones.indexOf(zone2);
+            
+            const bridgeY = (gameRect.height - 100) * 0.5; 
+            const startX = zoneWidth * zoneIndex1 + zoneWidth / 2;
+            const endX = zoneWidth * zoneIndex2 + zoneWidth / 2;
+            
+            elements.crossRollupBridgeVisual.style.top = `${bridgeY - 4}px`; 
+            elements.crossRollupBridgeVisual.style.left = `${startX}px`;
+            elements.crossRollupBridgeVisual.style.width = `${Math.abs(endX - startX)}px`;
+            elements.crossRollupBridgeVisual.style.opacity = '1';
+
+            setTimeout(() => {
+                elements.crossRollupBridgeVisual.style.opacity = '0';
+                elements.crossRollupBridgeVisual.style.width = '0px'; 
+            }, 800);
+        }
+
+        function handleOrbClick(event) {
+            if (!currentRoundState.gameActive) return;
+            const orb = event.currentTarget;
+            if (orb.classList.contains('locked') || orb.dataset.isLingering === 'true') return;
+
+            if (orb.dataset.isBooster === 'true') {
+                activateBatchProofBoosterEffect(orb);
+                return;
+            }
+
+            orb.dataset.tapsDone = parseInt(orb.dataset.tapsDone) + 1;
+            if (parseInt(orb.dataset.tapsRequired) > 1 && parseInt(orb.dataset.tapsDone) < parseInt(orb.dataset.tapsRequired)) {
+                orb.style.transform = 'scale(0.95) rotate(5deg)';
+                setTimeout(() => orb.style.transform = 'scale(1) rotate(0deg)', 80);
+            } else {
+                orb.style.transform = 'scale(0.9)';
+                setTimeout(() => orb.style.transform = 'scale(1)', 100);
+            }
+            
+            if (parseInt(orb.dataset.tapsDone) >= parseInt(orb.dataset.tapsRequired)) {
+                if (orb.dataset.isCrossRollup === 'true') { 
+                    secureCrossRollupOrb(orb);
+                } else {
+                    secureOrb(orb);
+                }
+            }
+        }
+
+        function activateBatchProofBoosterEffect(boosterOrb) {
+            // ... (remains the same)
+             if (!currentRoundState.gameActive || !boosterOrb) return;
+
+            clearTimeout(parseInt(boosterOrb.dataset.despawnTimeoutId));
+            boosterOrb.remove();
+            currentRoundState.booster.active = false; 
+
+            let batchedCount = 0;
+            const orbsToAffect = document.querySelectorAll('.orb:not(.locked):not(.booster-orb)'); 
+
+            orbsToAffect.forEach(orb => {
+                if (orb.dataset.isLingering === 'true') return; 
+
+                batchedCount++;
+                orb.dataset.isLingering = 'true'; 
+
+                clearTimeout(parseInt(orb.dataset.despawnTimeoutId));
+
+                orb.style.transform = 'scale(1.25)'; 
+                orb.classList.add('booster-orb-lingering');
+
+                const originalText = orb.textContent;
+                orb.textContent = '🔒';
+                orb.style.fontSize = `${Math.max(16, parseFloat(orb.style.width) * 0.5)}px`;
+
+
+                setTimeout(() => {
+                    orb.textContent = originalText; 
+                    orb.style.transform = 'scale(1)'; 
+                    orb.classList.remove('booster-orb-lingering');
+                    delete orb.dataset.isLingering;
+                    secureOrb(orb); 
+                }, BOOSTER_LINGER_DURATION);
+            });
+
+            if (batchedCount > 0) {
+                showBatchInfoPopup(`Batch Proofing ${batchedCount} Orbs!`);
+            }
+        }
+
+        function secureCrossRollupOrb(crossOrb) {
+            // ... (remains the same)
+            secureOrb(crossOrb); 
+
+            const zoneName1 = crossOrb.dataset.zone1;
+            const zoneName2 = crossOrb.dataset.zone2;
+            
+            showCrossRollupBridge(zoneName1, zoneName2);
+            
+            let clearedInZonesCount = 0;
+            const otherOrbs = document.querySelectorAll('.orb:not(.locked):not([data-is-lingering="true"])');
+            
+            otherOrbs.forEach(otherOrb => {
+                const orbZoneName = otherOrb.dataset.zone;
+                if (orbZoneName === zoneName1 || orbZoneName === zoneName2) {
+                    if (otherOrb !== crossOrb && otherOrb.dataset.isBooster !== 'true') {
+                        secureOrb(otherOrb); 
+                        clearedInZonesCount++;
+                    }
+                }
+            });
+
+            if (clearedInZonesCount > 0) {
+                showBatchInfoPopup(`Cross-Rollup! +${clearedInZonesCount} zoned orbs secured!`);
+            }
+            elements.vaultDoor.style.boxShadow = '0 0 30px rgba(255, 255, 100, 0.9)'; 
+            setTimeout(() => elements.vaultDoor.style.boxShadow = '0 0 15px rgba(64, 64, 255, 0.3)', 600);
+        }
+        
+        function secureOrb(orb) {
+            // ... (remains the same)
+            if (orb.classList.contains('locked')) return; 
+            orb.classList.add('locked');
+            orb.style.cursor = 'default';
+            orb.removeEventListener('click', handleOrbClick); 
+            
+            if(orb.dataset.despawnTimeoutId) clearTimeout(parseInt(orb.dataset.despawnTimeoutId));
+
+            const vaultRect = elements.vaultDoor.getBoundingClientRect();
+            const orbRect = orb.getBoundingClientRect();
+            const gameContainerRect = elements.gameContainer.getBoundingClientRect();
+            
+            const targetX = vaultRect.left + vaultRect.width / 2 - orbRect.width / 2 - gameContainerRect.left;
+            const targetY = vaultRect.top + vaultRect.height / 2 - orbRect.height / 2 - gameContainerRect.top;
+            
+            orb.style.transition = `left 0.5s ease-out, top 0.5s ease-out, opacity 0.5s ease-out 0.5s, background-color 0.3s, color 0.3s, transform 0.3s ease-out`;
+            orb.style.left = `${targetX}px`;
+            orb.style.top = `${targetY}px`;
+            orb.style.opacity = '0';
+            orb.style.transform = 'scale(0.5)'; 
+            
+            const value = parseInt(orb.dataset.value);
+            if (!isNaN(value)) {
+                 currentRoundState.score += value;
+                 currentRoundState.progress += value;
+            }
+            
+            if (orb.dataset.isBatch === 'true') { 
+                elements.vaultDoor.style.boxShadow = '0 0 30px rgba(255, 204, 0, 0.8)';
+                setTimeout(() => elements.vaultDoor.style.boxShadow = '0 0 15px rgba(64, 64, 255, 0.3)', 500);
+            }
+            
+            updateScoreUI();
+            updateProgress();
+            setTimeout(() => orb.remove(), 1000);
+        }
+        
+        function showBatchInfoPopup(message) {
+            // ... (remains the same)
+            elements.batchInfoPopup.textContent = message;
+            elements.batchInfoPopup.style.display = 'block';
+            elements.batchInfoPopup.style.opacity = '1';
+            setTimeout(() => {
+                 elements.batchInfoPopup.style.opacity = '0';
+                 setTimeout(() => elements.batchInfoPopup.style.display = 'none', 300);
+            }, 2000);
+        }
+
+        function endGame(victory) {
+            currentRoundState.gameActive = false;
+            clearInterval(currentRoundState.gameLoop);
+            clearInterval(currentRoundState.orbSpawnLoop);
+            clearInterval(currentRoundState.autoTapInterval);
+            
+            const activeBooster = document.querySelector('.orb.booster-orb');
+            if(activeBooster) activeBooster.remove();
+            currentRoundState.booster.active = false;
+
+            const earnedThisRound = currentRoundState.score + (victory ? 30 : 0);
+            globalGameState.edgePoints += earnedThisRound; 
+            
+            elements.endScreen.style.display = 'flex';
+            document.getElementById('end-title').textContent = victory ? 'Vault Secured!' : 'Time Expired!';
+            document.getElementById('end-message').textContent = victory ? 
+                `You secured the vault with ${currentRoundState.score} transactions!` : 
+                `You secured ${currentRoundState.score} transactions before time ran out.`;
+            elements.finalScore.textContent = currentRoundState.score;
+            elements.earnedPoints.textContent = earnedThisRound;
+            elements.edgePointsDisplay.textContent = globalGameState.edgePoints; 
+
+            // DO NOT reset globalGameState.purchasedUpgrades here if you want them to persist
+            // until the player chooses to reset them or the game explicitly does.
+            // The reset now happens at the START of a new game in startGame().
+        }
+        
+        function showUpgradeMenu() {
+            elements.upgradeMenu.style.display = 'block';
+            elements.upgradePointsDisplay.textContent = globalGameState.edgePoints; 
+            
+            // Show the *currently purchased* levels that will apply to the next round
+            const { tapSpeed, autoTap, timeExtension, boosterCooldown } = globalGameState.purchasedUpgrades;
+
+            elements.upgradeTapSpeed.textContent = `Faster Taps (Cost: ${50 * (tapSpeed + 1)}) - Next Round: L${tapSpeed}`;
+            elements.upgradeTapSpeed.disabled = globalGameState.edgePoints < 50 * (tapSpeed + 1) || tapSpeed >= 5;
+            
+            elements.upgradeAutoTap.textContent = `Auto-Tap (Cost: ${100 * (autoTap + 1)}) - Next Round: L${autoTap}`;
+            elements.upgradeAutoTap.disabled = globalGameState.edgePoints < 100 * (autoTap + 1) || autoTap >= 3;
+            
+            elements.upgradeTime.textContent = `+5 Seconds (Cost: ${75 * (timeExtension + 1)}) - Next Round: L${timeExtension}`;
+            elements.upgradeTime.disabled = globalGameState.edgePoints < 75 * (timeExtension + 1) || timeExtension >= 2;
+
+            elements.upgradeBoosterCooldown.textContent = `Booster Cooldown -20% (Cost: ${120 * (boosterCooldown + 1)}) - Next Round: L${boosterCooldown}`;
+            elements.upgradeBoosterCooldown.disabled = globalGameState.edgePoints < 120 * (boosterCooldown + 1) || boosterCooldown >= 5;
+        }
+        
+        function hideUpgradeMenu() {
+            elements.upgradeMenu.style.display = 'none';
+        }
+        
+        function buyUpgrade(type, baseCost, maxLevel) {
+            if (!globalGameState.purchasedUpgrades.hasOwnProperty(type)) return; 
+
+            const currentPurchasedLevel = globalGameState.purchasedUpgrades[type];
+            if (currentPurchasedLevel >= maxLevel) return; 
+
+            const cost = baseCost * (currentPurchasedLevel + 1);
+            
+            if (globalGameState.edgePoints >= cost) {
+                globalGameState.edgePoints -= cost; 
+                globalGameState.purchasedUpgrades[type]++; 
+                
+                elements.edgePointsDisplay.textContent = globalGameState.edgePoints;
+                showUpgradeMenu(); 
+            }
+        }
+        
+        function startAutoTap() {
+            if (currentRoundState.autoTapInterval) clearInterval(currentRoundState.autoTapInterval);
+            if (currentRoundState.activeUpgrades.autoTap === 0 || !currentRoundState.gameActive) return; 
+            
+            const interval = Math.max(200, 1000 - (currentRoundState.activeUpgrades.autoTap * 250)); 
+            currentRoundState.autoTapInterval = setInterval(() => {
+                if (!currentRoundState.gameActive) return;
+                const orbs = document.querySelectorAll('.orb:not(.locked):not([data-is-booster="true"]):not([data-is-lingering="true"])'); 
+                if (orbs.length > 0) {
+                    handleOrbClick({ currentTarget: orbs[0] });
+                }
+            }, interval);
+        }
+        
+        function darkenColor(color, percent) {
+            // ... (remains the same)
+            const num = parseInt(color.replace('#', ''), 16);
+            const amt = Math.round(2.55 * percent);
+            let R = (num >> 16) - amt;
+            let G = (num >> 8 & 0x00FF) - amt;
+            let B = (num & 0x0000FF) - amt;
+            R = Math.max(0, R); G = Math.max(0, G); B = Math.max(0, B); 
+            return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+        }
+        
+        initializeCurrentRoundState(); 
+        updateScoreUI(); 
+        updateTimer();
+    </script>
+</body>
+</html>
